@@ -47,6 +47,8 @@ double fosProbs[NO_FOS_POINTS];
 double fosFP;                      // probability of false detection of 100dB stimulus
 double threshold;                  // output from FOS curve fitting
 double slope;                      // output from FOS curve fitting
+double fp;                      // output from FOS curve fitting
+double fn;                      // output from FOS curve fitting
 
 /*
 ** Allocate memory
@@ -288,7 +290,8 @@ initialiseCells(FILE *f) {
             for(int t = 0 ; t < END_TIME ; t++) cCellArray[x][y].sumOfEPSP[t] = 0.0;
                 cCellArray[x][y].RGCOut             = 0.0;
             cCellArray[x][y].meanEPSP      = 0.0;  // cause gets accumulated later
-        for(int i = 0 ; i < END_TIME ; i++) cCellArray[x][y].spikesList[i] = 0;
+        for(int i = 0 ; i < END_TIME ; i++) 
+            cCellArray[x][y].spikesList[i] = 0;
 
                 // for each Gcell
             for(int i  = 0 ; i < X ; i++)
@@ -456,36 +459,121 @@ setCorticalTriggerPoints() {
              }
      }
           // now reset cortical cells ready for a run!
-     for(int x = 0 ; x < X ; x++) 
-          for(int y = 0 ; y < Y ; y++) {
-                cCellArray[x][y].RGCOut = 0.0;
-                cCellArray[x][y].timeLastFired = -CORTICAL_ABS_REF_PER;
-//                printf("Firing Threshold %4.2f\n",cCellArray[x][y].firingThreshold);
-          }
-     fprintf(stderr,"DONE\n");fflush(stderr);
+    //printf("\nFiring thresholds CC\n");
+    for(int x = 0 ; x < X ; x++) {
+        for(int y = 0 ; y < Y ; y++) {
+            cCellArray[x][y].RGCOut = 0.0;
+            cCellArray[x][y].timeLastFired = -CORTICAL_ABS_REF_PER;
+            //printf("%4.2f ",cCellArray[x][y].firingThreshold);
+        }
+        //printf("\n");
+    }
+    fprintf(stderr,"DONE\n");fflush(stderr);
 }//setCorticalTriggerPoints()
 
+    // sort highest to lowest (decreasing)
+int cmp(const void *a, const void *b) {
+    int *aa = (int *)a;
+    int *bb = (int *)b;
+
+    return *bb - *aa;
+}//cmp()
+
 /*
-** Decide if something was seen by finding biggest respose of any cell within a window of width ATTENTION_WINDOW
+** Decide if something was seen by finding biggest respose of 
+** any cell within a window of width ATTENTION_WINDOW
+int
+decision(int numSpikes[]) {
+    int noWindows = (int) END_TIME - (int) ATTENTION_WINDOW;
+    int maxResponse[noWindows];
+    for(int i = 0 ; i < noWindows ; i++) 
+        maxResponse[i] = 0;
+    for(int x = 0 ; x < X ; x++) 
+        for(int y = 0 ; y < Y ; y++) {
+        int sum = 0;
+        for(int i = 0 ; i < ATTENTION_WINDOW ; i++)
+            sum += cCellArray[x][y].spikesList[i];
+        for(int i = 0 ; i < noWindows ; i++) {
+            sum -= cCellArray[x][y].spikesList[i];
+            sum += cCellArray[x][y].spikesList[i + (int)ATTENTION_WINDOW];
+            if (sum > maxResponse[i]) 
+                maxResponse[i] = sum;
+        }
+    }
+    //qsort(maxResponse, noWindows, sizeof(int), cmp);
+    //return maxResponse[3];
+
+    int overallMax = 0;
+    for(int i = 0 ; i < END_TIME - ATTENTION_WINDOW ; i++) 
+        if(maxResponse[i] > overallMax) 
+            overallMax = maxResponse[i];
+    return overallMax;
+
+}//decision()
+*/
+
+/*
+** Get the DECISION_RANK'th highest element from a[0..n-1]
+** Uses insertion sort but only maintaining the top DECISION_RANK elements
+** Returns -1 if r > n.
+*/
+inline int 
+getValueAtRank(int *a, int n) { 
+
+    int sorted[DECISION_RANK+1];
+    for(int i = 0 ; i < DECISION_RANK  ; i++) 
+        sorted[i] = -1;
+
+    for(int i = 0 ; i < n ; i++) {
+        int j;
+        for(j = DECISION_RANK; j > 0 && a[i] > sorted[j-1]; j--)
+            sorted[j] = sorted[j-1];
+        sorted[j] = a[i];
+    }
+
+    return sorted[DECISION_RANK-1];
+} //getValueAtRank()
+
+/*
+** Return the decision variable "Maximum number of spikes by the fourth most
+** active cell in any window of width ATTENTION_WINDOW"
+**
+** Inefficient version Tue 16 Oct 2012 10:49:22 EST
 */
 int
 decision(int numSpikes[]) {
-     int noWindows = (int) END_TIME - (int) ATTENTION_WINDOW;
-     int maxResponse[noWindows];
-     for(int i = 0 ; i < noWindows ; i++) maxResponse[i] = 0;
-     for(int x = 0 ; x < X ; x++) 
-          for(int y = 0 ; y < Y ; y++) {
-          int sum = 0;
-          for(int i = 0 ; i < ATTENTION_WINDOW ; i++)
-                sum += cCellArray[x][y].spikesList[i];
-          for(int i = 0 ; i < noWindows ; i++) {
-                sum -= cCellArray[x][y].spikesList[i];
-                sum += cCellArray[x][y].spikesList[i + (int)ATTENTION_WINDOW];
-                if (sum > maxResponse[i]) maxResponse[i] = sum;
-          }
-     }
-     int overallMax = 0;
-    for(int i = 0 ; i < END_TIME - ATTENTION_WINDOW ; i++) if(maxResponse[i] > overallMax) overallMax = maxResponse[i];
+    int *count = (int *)malloc(sizeof(int) * X * Y);
+    if (count == NULL) {
+        fprintf(stderr,"Out of memory for counts in decision()\n");
+        return 0;
+    }
+        // get counts for first window
+    int index = 0;
+    for(int x = 0 ; x < X ; x++) 
+        for(int y = 0 ; y < Y ; y++) {
+            count[index] = 0;
+            for(int j = 0 ; j < (int)ATTENTION_WINDOW ; j++) 
+                count[index] += cCellArray[x][y].spikesList[j];
+            index++;
+        }
+    int overallMax = getValueAtRank(count, X*Y);
+
+        // now slide the windows along
+    int noWindows = (int) END_TIME - (int) ATTENTION_WINDOW;
+    for(int i = 1 ; i < noWindows ; i++) {
+        int index = 0;
+        for(int x = 0 ; x < X ; x++) 
+            for(int y = 0 ; y < Y ; y++) {
+                count[index] -= cCellArray[x][y].spikesList[i-1];
+                count[index] += cCellArray[x][y].spikesList[i+(int)ATTENTION_WINDOW-1];
+                index++;
+            }
+        int t = getValueAtRank(count, X*Y);
+        if (t > overallMax)
+            overallMax = t;
+    }
+
+    free(count);
     return overallMax;
 }//decision()
 
@@ -503,75 +591,89 @@ doStimulus(double intensity, double xOffset, double yOffset) {
           // Store the results in spikesPerSecond[][] for ready access for this stim.
     for(int x = 0 ; x < X ; x++) {
         for(int y = 0 ; y < Y ; y++) {
-            // distance of centre of cell from centre of stimulus
-        double cellDist =  (gCellArray[x][y].x - xOffset) * (gCellArray[x][y].x - xOffset);
-               cellDist += (gCellArray[x][y].y - yOffset) * (gCellArray[x][y].y - yOffset);
-               cellDist = sqrt(cellDist);
-
-        double sum = 0.0;
-        for(int i  = 0 ; i < RECEPTOR_X ; i++) {
-            for(int j  = 0 ; j < RECEPTOR_Y ; j++) {
-                if (cellDist + receptorDistances[i][j] < STIMULUS_RADIUS) {
-                    sum += gCellArray[x][y].receptorWeights[i][j];
+                // distance of centre of cell from centre of stimulus
+            double cellDist =  (gCellArray[x][y].x - xOffset) * (gCellArray[x][y].x - xOffset);
+                   cellDist += (gCellArray[x][y].y - yOffset) * (gCellArray[x][y].y - yOffset);
+                   cellDist = sqrt(cellDist);
+            
+            double sum = 0.0;
+            for(int i  = 0 ; i < RECEPTOR_X ; i++) {
+                for(int j  = 0 ; j < RECEPTOR_Y ; j++) {
+                    if (cellDist + receptorDistances[i][j] < STIMULUS_RADIUS) {
+                        sum += gCellArray[x][y].receptorWeights[i][j];
+                    }
                 }
             }
+            spikesPerSecond[x][y] = RGC_RESPONSE(intensity * sum) * gCellArray[x][y].fireReduction;
+            if (spikesPerSecond[x][y] < 0) 
+                spikesPerSecond[x][y] = 0;
+            
+            gCellArray[x][y].timeLastFired = -RGC_REFRACTORY_PERIOD; // give em a chance!
+            
+            cCellArray[x][y].timeLastFired = -CORTICAL_ABS_REF_PER;  // give em a chance!
+            cCellArray[x][y].fireCount     = 0;                      // ensure CCells all 0
         }
-        spikesPerSecond[x][y] = RGC_RESPONSE(intensity * sum) * gCellArray[x][y].fireReduction;
-        if (spikesPerSecond[x][y] < 0) 
-            spikesPerSecond[x][y] = 0;
-
-        gCellArray[x][y].timeLastFired = -RGC_REFRACTORY_PERIOD; // give em a chance!
-
-        cCellArray[x][y].timeLastFired = -CORTICAL_ABS_REF_PER;  // give em a chance!
-        cCellArray[x][y].fireCount     = 0;                      // ensure CCells all 0
-    }
-}
-
-if (!STOP_AT_RGC)
-{
-    // Now loop for all time steps, generating spikes
-int stimulusOn = 0;
-int numSpikes[(int)END_TIME];
-for(int time = 0 ; time < END_TIME ; time++) {
-    if (time == STIM_START)
-        stimulusOn = TRUE;
-    if (time == STIM_START + STIM_DURATION)
-        stimulusOn = FALSE;
-
-          checkAllCells((double)time/TIME_UNITS_PER_SECOND, stimulusOn);
-
-          numSpikes[time] = cortical((double)time/TIME_UNITS_PER_SECOND);
     }
 
-        // return the max number of spikes per window - this is the decision variable
-    return decision(numSpikes);
-}
-else
-    return 0;
+    if (!STOP_AT_RGC) {
+            // Now loop for all time steps, generating spikes
+        int stimulusOn = 0;
+        int numSpikes[(int)END_TIME];
+        for(int time = 0 ; time < END_TIME ; time++) {
+            if (time == STIM_START)
+                stimulusOn = TRUE;
+            if (time == STIM_START + STIM_DURATION)
+                stimulusOn = FALSE;
+
+            checkAllCells((double)time/TIME_UNITS_PER_SECOND, stimulusOn);
+
+            numSpikes[time] = cortical((double)time/TIME_UNITS_PER_SECOND);
+        }
+
+            // return the max number of spikes per window - this is the decision variable
+        return decision(numSpikes);
+    }
+    else
+        return 0;
 }//doStimulus()
 
 /*
 ** Get cdf of max number of spikes for a given stimulus intensity
 */
 int generateCdf(double intensity, int trials) {
-int spikes[trials];
-int maxSpikes = 0;
-for(int i = 0 ; i < trials ; i++) {
-    double x, y, r;
-    for(x = -2, r = rand()/(double)RAND_MAX ; r > gsl_cdf_gaussian_P (x, FIXATION_LOSS_X_SD) ; x += 0.005);
-    for(y = -2, r = rand()/(double)RAND_MAX ; r > gsl_cdf_gaussian_P (y, FIXATION_LOSS_Y_SD) ; y += 0.005);
-    spikes[i] = doStimulus(intensity, x, y);
-    if(spikes[i] > maxSpikes) maxSpikes = spikes[i];
-}
+    int *spikes = (int *)malloc(sizeof(int) * trials);
+    int maxSpikes = 0;
+    for(int i = 0 ; i < trials ; i++) {
+        if (i % 10 == 0)
+            fprintf(stderr, "%d ",i);
+        double x, y, r;
+            // jitter x and y for fixation movement
+        for(x = -2, r = rand()/(double)RAND_MAX ; r > gsl_cdf_gaussian_P (x, FIXATION_LOSS_X_SD) ; x += 0.005)
+            ;
+        for(y = -2, r = rand()/(double)RAND_MAX ; r > gsl_cdf_gaussian_P (y, FIXATION_LOSS_Y_SD) ; y += 0.005)
+            ;
+        spikes[i] = doStimulus(intensity, x, y);
+        if(spikes[i] > maxSpikes) 
+            maxSpikes = spikes[i];
+    }
 
-for(int i = 0 ; i <= maxSpikes ; i++) cdfSpikes[i] = 0.0;
-for(int i = 0 ; i < trials ; i++)
-    for(int j = 0 ; j < spikes[i] ; j++) cdfSpikes[j]++;
-for(int i = 0 ; i <= maxSpikes ; i++) cdfSpikes[i] /= trials;
-            // cdfSpikes[i] now contains the proportion of trials at which the maximum spike count
-            // is <=i; ie the proportion that would be 'detected' at a threshold of i
-            // As a check: cdfSpikes[0] should equal 1
-return maxSpikes;
+    for(int i = 0 ; i <= maxSpikes ; i++) 
+        cdfSpikes[i] = 0.0;
+    for(int i = 0 ; i < trials ; i++)
+        for(int j = 0 ; j < spikes[i] ; j++) 
+            cdfSpikes[j]++;
+    for(int i = 0 ; i <= maxSpikes ; i++) 
+        cdfSpikes[i] /= trials;
+
+    // cdfSpikes[i] now contains the proportion of trials at which the maximum spike count
+    // is <=i; ie the proportion that would be 'detected' at a threshold of i
+    //    ^^^ >=i ???
+    // As a check: cdfSpikes[0] should equal 1
+
+    assert(cdfSpikes[0] == 1);
+
+    free(spikes);
+    return maxSpikes;
 }//generateCdf()
 
 /*
@@ -580,249 +682,249 @@ return maxSpikes;
 ** P('seen') in detection task = 2*(p-0.5)
 */
 double generateFOSPoint(double intensity, int maxSpikesNoStim, double * cdfSpikesNoStim) {
-double areaUnderROC = 0;
-int overallMax;
-int maxSpikes = generateCdf(intensity, TRIALS_PER_INTENSITY);
-if(maxSpikesNoStim < maxSpikes) overallMax = maxSpikesNoStim;
-else overallMax = maxSpikes;
+    double areaUnderROC = 0;
+    int overallMax;
+    int maxSpikes = generateCdf(intensity, TRIALS_PER_INTENSITY);
+    if(maxSpikesNoStim < maxSpikes) 
+        overallMax = maxSpikesNoStim;
+    else 
+        overallMax = maxSpikes;
 
-for(int i = 1 ; i <= overallMax ; i++)
-    areaUnderROC += 0.5 * (cdfSpikes[i-1] + cdfSpikes[i]) * (cdfSpikesNoStim[i-1] - cdfSpikesNoStim[i]);
-if(!FIT_2AFC) {
-    if(areaUnderROC < 0.5) areaUnderROC = 0.5;
-    return 2*(areaUnderROC-0.5);      // Note: returning perimetric Prob(detection)
-}
-else return areaUnderROC;                                // returning 2AFC Prob(correct)
+    for(int i = 1 ; i <= overallMax ; i++)
+        areaUnderROC += 0.5 * (cdfSpikes[i-1] + cdfSpikes[i]) * (cdfSpikesNoStim[i-1] - cdfSpikesNoStim[i]);
+    if(!FIT_2AFC) {
+        if(areaUnderROC < 0.5) 
+            areaUnderROC = 0.5;
+        return 2*(areaUnderROC-0.5);      // Note: returning perimetric Prob(detection)
+    }
+    else 
+        return areaUnderROC;           // returning 2AFC Prob(correct)
 }//generateFOSPoint
 
 /*
 ** Calculate the 2-parameter Quick function of a single data point
 ** i.e. predicted probability of seeing given these parameters
-*/
 double quickfunction(double contrast, double threshold, double slope) {
-double qf =  1 - pow(2, -pow(contrast / threshold, slope));
-if(FIT_2AFC) qf = 0.5 * (1 + qf);        // Convert into 2AFC probability
-return qf;
+    double qf =  1 - pow(2, -pow(contrast / threshold, slope));
+    if(FIT_2AFC) qf = 0.5 * (1 + qf);        // Convert into 2AFC probability
+    return qf;
 }//quickfunction
+*/
 
 /*
 ** Calculate n!/k!(n-k)! for binomial coefficient in pointLikelihood()
-*/
 double binomialCoef(int n, int k) {
-double Coef = 1.0;
-if(k > (n-k)) k = n-k;    // Make k <= n/2
-for(int i = 1 ; i <= k ; i++) Coef *= (n-k+i)/i;
-return Coef;
+    double Coef = 1.0;
+    if(k > (n-k)) k = n-k;    // Make k <= n/2
+    for(int i = 1 ; i <= k ; i++) Coef *= (n-k+i)/i;
+    return Coef;
 }//binomialCoef
+*/
 
 /*
 ** Calculate likelihood of one point when the predicted probability is probPredicted, and the actual is probActual
 ** assuming binomial sampling on 200 trials per intensity
-*/
 double pointLikelihood(double probPredicted, double probActual) {
-if(probPredicted > 0.99999) probPredicted = 0.99999;        // Otherwise likelihood function falls apart!
-if(probPredicted < 0.00001) probPredicted = 0.00001;        // Otherwise likelihood function falls apart!
+    if(probPredicted > 0.99999) probPredicted = 0.99999;        // Otherwise likelihood function falls apart!
+    if(probPredicted < 0.00001) probPredicted = 0.00001;        // Otherwise likelihood function falls apart!
 
-int actual = (int) round(probActual * TRIALS_PER_INTENSITY); 
-double lHood = binomialCoef(TRIALS_PER_INTENSITY, actual) * pow(probPredicted, actual) * pow(1-probPredicted, TRIALS_PER_INTENSITY-actual);
-return log(lHood);
+    int actual = (int) round(probActual * TRIALS_PER_INTENSITY); 
+    double lHood = binomialCoef(TRIALS_PER_INTENSITY, actual) * pow(probPredicted, actual) * pow(1-probPredicted, TRIALS_PER_INTENSITY-actual);
+    return log(lHood);
 }
+*/
 
 /*
 ** Calculate loglikelihood of FOS data given the two parameters of the Quick function
-*/
 double loglikelihood(int noContrasts, double threshold, double slope, int threshEstimate) {
-double sum = 0.0;
-int low = threshEstimate - 8;
-if(low < 0) low = 0;
-int high = threshEstimate + 8;
-if (low > noContrasts) high = noContrasts;
-for(int stim = low ; stim < high ; stim++) if(fosStimuli[stim] != 99.0)
-    sum += pointLikelihood(quickfunction(CONTRAST(fosStimuli[stim]), CONTRAST(threshold), slope), fosProbs[stim]);
-return sum;
+    double sum = 0.0;
+    int low = threshEstimate - 8;
+    if(low < 0) 
+        low = 0;
+    int high = threshEstimate + 8;
+    if (low > noContrasts) 
+        high = noContrasts;
+    for(int stim = low ; stim < high ; stim++) 
+        if(fosStimuli[stim] != FOS_POINT_NOT_DONE)
+            sum += pointLikelihood(quickfunction(CONTRAST(fosStimuli[stim]), CONTRAST(threshold), slope), fosProbs[stim]);
+    return sum;
 }//loglikelihood
+*/
 
 /*
 ** Search for MLE of threshold and slope of FOS curve
-*/
 void fitFOS(int noContrasts, int threshEstimate) {
-double slopeTry=0.0;
-int low = threshEstimate - 4;
-int high = threshEstimate + 4;
-threshold = 0.0;
-slope = 0.0;
+    double slopeTry = 0.0;
+    int low = threshEstimate - 4;
+    int high = threshEstimate + 4;
+    threshold = 0.0;
+    slope = 0.0;
 
-double currentLikelihood = -1000000000;
-double bestLikelihood = -1000000000;
-fprintf(stderr,"threshEstimate=%4i,low=%4i, high=%4i\n",threshEstimate,low,high);
-for(double thresholdTry = low ; thresholdTry <= high ; thresholdTry += 0.1) {
-    for(double slopeIndex = -1.0 ; slopeIndex < 2.0 ; slopeIndex += 0.02) {
-        slopeTry = pow(10, slopeIndex);
-        currentLikelihood = loglikelihood(noContrasts, thresholdTry, slopeTry, threshEstimate);
-        if(currentLikelihood > bestLikelihood) {
-            bestLikelihood = currentLikelihood;
-            threshold = thresholdTry;
-            slope = slopeTry;
+    double currentLikelihood = -1000000000;
+    double bestLikelihood = -1000000000;
+    fprintf(stderr,"threshEstimate=%4i,low=%4i, high=%4i\n",threshEstimate,low,high);
+    for(double thresholdTry = low ; thresholdTry <= high ; thresholdTry += 0.1) {
+        for(double thresholdTry = low ; thresholdTry <= high ; thresholdTry += 0.1) {
+            for(double thresholdTry = low ; thresholdTry <= high ; thresholdTry += 0.1) {
+                for(double slopeIndex = -1.0 ; slopeIndex < 2.0 ; slopeIndex += 0.02) {
+                    slopeTry = pow(10, slopeIndex);
+                    currentLikelihood = loglikelihood(noContrasts, thresholdTry, slopeTry, threshEstimate);
+                    if(currentLikelihood > bestLikelihood) {
+                        bestLikelihood = currentLikelihood;
+                        threshold = thresholdTry;
+                        slope = slopeTry;
+                    }
+                }
+            }
         }
     }
-}
-return;
+}//fitFOS
+*/
+
+/*
+** Brute force least-squares fit of Cummulative Gaussian
+** search is over threshold \in 0:40, slope \in 0:10
+**
+** SIDEEFECTS: changes global threshold and slope.
+*/
+void fitFOS(int noContrasts) {
+    double min = 1000000000;
+    for(int thresholdTry = 0 ; thresholdTry < noContrasts ; thresholdTry++)
+        for(int slopeTry = 0 ; slopeTry < 11 ; slopeTry++) {
+            for(double fpTry = 0 ; fpTry <= 0.05 ; fpTry += 0.01) {
+                for(double fnTry = 0 ; fnTry <= 0.05 ; fnTry += 0.01) {
+                    double ls = 0.0;
+                    for(int t = 0 ; t < noContrasts ; t++)
+                        if (fosStimuli[t] != FOS_POINT_NOT_DONE) {
+                            double diff = fosProbs[t] - (fpTry + (1 - fpTry - fnTry)*(1-gsl_cdf_gaussian_P(t - thresholdTry, slopeTry)));
+                            ls += diff*diff;
+                        }
+                    if (ls < min) {
+                        threshold = thresholdTry;
+                        slope     = slopeTry;
+                        fp        = fpTry;
+                        fn        = fnTry;
+                        min = ls;
+                    }
+                }
+            }
+        }
 }//fitFOS
 
 /*
 ** Generate a FOS curve; output mean and standard deviation with Quick function (transformed Weibull)
-** Author SG 16 Nov '06
 */
 void
 generateFOS() {
-#define NO_CONTRASTS 41
-#define MIN_STIMS        6
-cdfSpikes = (double *)malloc(sizeof(double)*100);
-cdfSpikesNoStim = (double *)malloc(sizeof(double)*100);
-int stimsSoFar = 0;
-int AFCFlag = 0;
-if(FIT_2AFC) AFCFlag = 1;
-double minAccept = 0.1 + 0.45*AFCFlag;
-double maxAccept = 0.9 + 0.05*AFCFlag;
+    cdfSpikes = (double *)malloc(sizeof(double)*100);
+    cdfSpikesNoStim = (double *)malloc(sizeof(double)*100);
+    int stimsSoFar = 0;
+    double minAccept = 0.1 + 0.45 * FIT_2AFC;
+    double maxAccept = 0.9 + 0.05 * FIT_2AFC;
+    
+    fprintf(stderr,"Establishing base firing with no stim...");
+    int maxSpikesNoStim = generateCdf(0, TRIALS_NO_STIM);
+    fprintf(stderr,"DONE\n");
 
-int maxSpikesNoStim = generateCdf(0, TRIALS_NO_STIM);
-for(int i = 0 ; i <= maxSpikesNoStim ; i++) cdfSpikesNoStim[i] = cdfSpikes[i];
-for(int i = 0 ; i < NO_CONTRASTS ; i++) fosStimuli[i] = 99.0;
+    for(int i = 0 ; i <= maxSpikesNoStim ; i++)     // take copy of cdfSpikes
+        cdfSpikesNoStim[i] = cdfSpikes[i];
 
-fosStimuli[24] = 24;
-fosProbs[24] = generateFOSPoint(CONTRAST(24), maxSpikesNoStim, cdfSpikesNoStim);
-if(fosProbs[24] > minAccept) if(fosProbs[24] < maxAccept) stimsSoFar++;
-fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[24], fosProbs[24]);
-//printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[24], fosProbs[24]);
+    for(int i = 0 ; i < NO_CONTRASTS ; i++) 
+        fosStimuli[i] = FOS_POINT_NOT_DONE;
 
-if(fosProbs[24] > 0.02 + 0.49*AFCFlag) {
-   fosStimuli[32] = 32;
-   fosProbs[32] = generateFOSPoint(CONTRAST(32), maxSpikesNoStim, cdfSpikesNoStim);
-    if(fosProbs[32] > minAccept) if(fosProbs[32] < maxAccept) stimsSoFar++;
-   fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[32], fosProbs[32]);
-//    printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[32], fosProbs[32]);
+    #define DO_A_FOS_POINT(_s) do { \
+        fosStimuli[_s] = _s; \
+        fosProbs[_s] = generateFOSPoint(CONTRAST(_s), maxSpikesNoStim, cdfSpikesNoStim); \
+        if ((fosProbs[_s] > minAccept) && (fosProbs[_s] < maxAccept)) \
+            stimsSoFar++; \
+        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[_s], fosProbs[_s]); \
+    } while (0);
 
-    if(fosProbs[32] > 0.02 + 0.49*AFCFlag) {
-        fosStimuli[40] = 40;
-        fosProbs[40] = generateFOSPoint(CONTRAST(40), maxSpikesNoStim, cdfSpikesNoStim);
-         if(fosProbs[40] > minAccept) if(fosProbs[40] < maxAccept) stimsSoFar++;
-        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[40], fosProbs[40]);
-//        printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[40], fosProbs[40]);
-    }
-}
+        // dB values to test regardless of outcome
+    #define NUM_INITIAL_CONTRASTS 5
+    int initialStim[NUM_INITIAL_CONTRASTS] = { 0, 10, 20, 30, 40};
+    for(int i = 0 ; i < NUM_INITIAL_CONTRASTS ; i++)
+        DO_A_FOS_POINT(initialStim[i]);
 
-if(fosProbs[24] < 0.98 + 0.01*AFCFlag) {
-    fosStimuli[16] = 16;
-   fosProbs[16] = generateFOSPoint(CONTRAST(16), maxSpikesNoStim, cdfSpikesNoStim);
-    if(fosProbs[16] > minAccept) if(fosProbs[16] < maxAccept) stimsSoFar++;
-   fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[16], fosProbs[16]);
-//    printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[16], fosProbs[16]);
+    int hiStim = 0;
+    int loStim = NUM_INITIAL_CONTRASTS-1;
+    while(hiStim < NUM_INITIAL_CONTRASTS && fosProbs[initialStim[hiStim]] > 0.5) hiStim++;
+    while(loStim >= 0                    && fosProbs[initialStim[loStim]] < 0.5) loStim--;
+    if (hiStim == NUM_INITIAL_CONTRASTS) 
+        loStim = hiStim = NUM_INITIAL_CONTRASTS - 1;
+    if (loStim == -1) 
+        loStim = hiStim = 0;
+    fprintf(stderr,"hi=%d lo=%d => %d %d\n", hiStim, loStim, initialStim[hiStim],initialStim[loStim]);
 
-    if(fosProbs[16] < 0.98 + 0.01*AFCFlag) {
-        fosStimuli[8] = 8;
-        fosProbs[8] = generateFOSPoint(CONTRAST(8), maxSpikesNoStim, cdfSpikesNoStim);
-         if(fosProbs[8] > minAccept) if(fosProbs[8] < maxAccept) stimsSoFar++;
-        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[8], fosProbs[8]);
-//        printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[8], fosProbs[8]);
-
-        if(fosProbs[8] < 0.98 + 0.01*AFCFlag) {
-            fosStimuli[0] = 0;
-            fosProbs[0] = generateFOSPoint(CONTRAST(0), maxSpikesNoStim, cdfSpikesNoStim);
-             if(fosProbs[0] > minAccept) if(fosProbs[0] < maxAccept) stimsSoFar++;
-            fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[0], fosProbs[0]);
-//            printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[0], fosProbs[0]);
+    int loDb=-1, hiDb=-1;
+    if (hiStim == loStim) {
+        if (fosProbs[initialStim[hiStim]] > 0.55)
+            loStim++; 
+        else if (fosProbs[initialStim[hiStim]] < 0.45) 
+            hiStim--;
+        else {
+            loDb = initialStim[hiStim] - 2;
+            hiDb = loDb + 5;
         }
     }
-}
-
-for(int stim = 4 ; stim < NO_CONTRASTS ; stim += 8) {
-    if(fosStimuli[stim-4] != 99.0) if(fosStimuli[stim+4] != 99.0)
-         if(fosProbs[stim-4] > 0.02 + 0.49*AFCFlag) if(fosProbs[stim+4] < 0.98 + 0.01*AFCFlag) {
-        fosStimuli[stim] = stim;
-        fosProbs[stim] = generateFOSPoint(CONTRAST(fosStimuli[stim]), maxSpikesNoStim, cdfSpikesNoStim);
-           if(fosProbs[stim] > minAccept) if(fosProbs[stim] < maxAccept) stimsSoFar++;
-        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
-//          printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
+    if (loDb == -1) {  // if haven't set dB values, do interpolation
+        if (loStim > NUM_INITIAL_CONTRASTS-1) 
+            loStim = NUM_INITIAL_CONTRASTS;
+        if (hiStim < 0)
+            hiStim = 0;
+        loDb = initialStim[hiStim];
+        hiDb = initialStim[loStim];
+        float mid = (float)loDb + (fosProbs[loDb] - 0.5)/(fosProbs[loDb]-fosProbs[hiDb])*((float)hiDb - (float)loDb);
+        loDb = (int)mid - 2;
+        hiDb = (int)mid + 2;
     }
-}
-
-for(int stim = 2 ; stim < NO_CONTRASTS ; stim += 4) {
-    if(fosStimuli[stim-2] != 99.0) if(fosStimuli[stim+2] != 99.0)
-     if(fosProbs[stim-2] > 0.05 + 0.475*AFCFlag) if(fosProbs[stim+2] < 0.95 + 0.025*AFCFlag) {
-        fosStimuli[stim] = stim;
-        fosProbs[stim] = generateFOSPoint(CONTRAST(fosStimuli[stim]), maxSpikesNoStim, cdfSpikesNoStim);
-           if(fosProbs[stim] > minAccept) if(fosProbs[stim] < maxAccept) stimsSoFar++;
-        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
-//          printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
-    }
-}
-
-if(stimsSoFar < MIN_STIMS) for(int stim = 1 ; stim < NO_CONTRASTS ; stim += 2) {
-    if(fosStimuli[stim-1] != 99.0) if(fosStimuli[stim+1] != 99.0)
-        if(fosProbs[stim-1] > 0.2 + 0.4*AFCFlag) if(fosProbs[stim+1] < 0.8 + 0.1*AFCFlag) {
-            fosStimuli[stim] = stim;
-            fosProbs[stim] = generateFOSPoint(CONTRAST(fosStimuli[stim]), maxSpikesNoStim, cdfSpikesNoStim);
-                   if(fosProbs[stim] > minAccept) if(fosProbs[stim] < maxAccept) stimsSoFar++;
-                fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
-//                printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
-        }
-}
-
-if(stimsSoFar < MIN_STIMS) for(int stim = 1 ; stim < NO_CONTRASTS ; stim += 2) {
-    if(fosStimuli[stim] == 99.0) if(fosStimuli[stim-1] != 99.0) if(fosStimuli[stim+1] != 99.0)
-        if(fosProbs[stim-1] > 0.1 + 0.45*AFCFlag) if(fosProbs[stim+1] < 0.9 + 0.05*AFCFlag) {
-            fosStimuli[stim] = stim;
-            fosProbs[stim] = generateFOSPoint(CONTRAST(fosStimuli[stim]), maxSpikesNoStim, cdfSpikesNoStim);
-                   if(fosProbs[stim] > minAccept) if(fosProbs[stim] < maxAccept) stimsSoFar++;
-                fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
-//                printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
-        }
-}
-
-if(stimsSoFar < MIN_STIMS) for(int stim = 1 ; stim < NO_CONTRASTS ; stim += 2) {
-    if(fosStimuli[stim] == 99.0) if(fosStimuli[stim-1] != 99.0) if(fosStimuli[stim+1] != 99.0) {
-      fosStimuli[stim] = stim;
-      fosProbs[stim] = generateFOSPoint(CONTRAST(fosStimuli[stim]), maxSpikesNoStim, cdfSpikesNoStim);
-         if(fosProbs[stim] > minAccept) if(fosProbs[stim] < maxAccept) stimsSoFar++;
-        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
-//        printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[stim], fosProbs[stim]);
-    }
-}
-
-int threshEstimate = 0;
-while((fosStimuli[threshEstimate] == 99) || (fosProbs[threshEstimate] > 0.5 + 0.25*AFCFlag)) threshEstimate++;
-if(fosStimuli[threshEstimate-1] != 99) if((fosProbs[threshEstimate-1] - 0.5 - 0.25*AFCFlag) < (0.5 + 0.25*AFCFlag - fosProbs[threshEstimate])) threshEstimate--;
-
-fprintf(stderr,"Valid stimsSoFar=%4i, threshEstimate=%4i\n",stimsSoFar,threshEstimate);
-int range = 1;
-while(stimsSoFar < MIN_STIMS) {
-    if(fosStimuli[threshEstimate-range] == 99) {
-        fosStimuli[threshEstimate-range] = threshEstimate-range;
-      fosProbs[threshEstimate-range] = generateFOSPoint(CONTRAST(fosStimuli[threshEstimate-range]), maxSpikesNoStim, cdfSpikesNoStim);
-        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[threshEstimate-range], fosProbs[threshEstimate-range]);
-//        printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[threshEstimate-range], fosProbs[threshEstimate-range]);
-         stimsSoFar++;
-    }
-    if(fosStimuli[threshEstimate+range] == 99) {
-        fosStimuli[threshEstimate+range] = threshEstimate+range;
-      fosProbs[threshEstimate+range] = generateFOSPoint(CONTRAST(fosStimuli[threshEstimate+range]), maxSpikesNoStim, cdfSpikesNoStim);
-        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[threshEstimate+range], fosProbs[threshEstimate+range]);
-//       printf("Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[threshEstimate+range], fosProbs[threshEstimate+range]);
-         stimsSoFar++;
-    }
-    range++;
-}
-
-fitFOS(NO_CONTRASTS, threshEstimate);
-
-double iqRange = 6.484885 / slope;    // From Strasburger, Perception & Psychophysics 2001 1348-55
-printf("%4.2f, %5.3f, %5.3f\n", threshold, slope, iqRange);            // Into output file
-//printf("Threshold =%4.2f, Slope =%5.3f, Interquartile Range =%5.3f\n", threshold, slope, iqRange);            // Into output file
-fprintf(stderr,"Threshold =%4.2f, Slope =%4.2f, Interquartile Range =%4.2f\n", threshold, slope, iqRange);
 /*
-for(int Stim=0;Stim<5;Stim++)
-        fprintf(stderr,"Stimulus %2i, Prob of Seeing %5.4f\n",0,generateFOSPoint(CONTRAST(0), maxSpikesNoStim, cdfSpikesNoStim));
+        // now search for the 0.5 point, and take +-2 around that
+    int loStim = 0;
+    int hiStim = NUM_INITIAL_CONTRASTS-1;
+    while(fosProbs[initialStim[loStim]] > 0.98 + 0.01*FIT_2AFC) loStim++;
+    while(fosProbs[initialStim[hiStim]] < 0.02 + 0.49*FIT_2AFC) hiStim--;
+    fprintf(stderr,"lo=%d hi=%d => %d %d\n", loStim, hiStim, initialStim[loStim],initialStim[hiStim]);
+
+    int loDb=-1, hiDb=-1;
+    if (loStim == hiStim) {
+        if (fosProbs[initialStim[loStim]] > 0.55)
+            hiStim++; 
+        else if (fosProbs[initialStim[loStim]] < 0.45) 
+            loStim--;
+        else {
+            loDb = initialStim[loStim] - 2;
+            hiDb = loDb + 5;
+        }
+    }
+    if (loDb == -1) {  // if haven't set dB values, do interpolation
+        if (hiStim > NUM_INITIAL_CONTRASTS-1) 
+            hiStim = NUM_INITIAL_CONTRASTS;
+        if (loStim < 0)
+            loStim = 0;
+        loDb = initialStim[loStim];
+        hiDb = initialStim[hiStim];
+        float mid = (float)loDb + (fosProbs[loDb] - 0.5)/(fosProbs[loDb]-fosProbs[hiDb])*((float)hiDb - (float)loDb);
+        loDb = (int)mid - 2;
+        hiDb = (int)mid + 2;
+    }
 */
+
+    //fprintf(stderr,"lo=%d hi=%d\n", loDb, hiDb);
+    for(int stim = loDb ; stim <= hiDb  ; stim++)
+        DO_A_FOS_POINT(stim);
+/*
+fosStimuli[10] = 10;
+fosStimuli[11] = 11;
+fosStimuli[12] = 12;
+fosProbs[10] = 0.9;
+fosProbs[11] = 0.5;
+fosProbs[12] = 0.4;
+*/
+
+    fitFOS(NO_CONTRASTS);
+
+    printf("Threshold =%4.2f, Spread (sd of CumGauss) =%4.2f, FP=%4.2f FN=%4.2f\n", threshold, slope, fp, fn);
 
 }//generateFOS()
 
@@ -864,8 +966,8 @@ main(int argc, char *argv[]) {
         exit(-1);
     }
 
-for(int fosNumber = 0 ; fosNumber < 1 ; fosNumber++) {
-    if (!STOP_AT_RGC) setCorticalTriggerPoints();
+    for(int fosNumber = 0 ; fosNumber < 1 ; fosNumber++) {
+        if (!STOP_AT_RGC) setCorticalTriggerPoints();
 
     //  printf("# Stimulus %d ",i);
     //  printf(Dysfunction(&d[dys]); 
@@ -877,6 +979,6 @@ for(int fosNumber = 0 ; fosNumber < 1 ; fosNumber++) {
 //        for(int i = 0 ; i < NUMBER_OF_STIMULI ; i++)
 //            printf("%5i, %5i\n",j,doStimulus((int)CONTRAST(j), 0, 0));
 
-    generateFOS();
+        generateFOS();
     }
 }//main
