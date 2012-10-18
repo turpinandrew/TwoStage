@@ -1,15 +1,21 @@
 #define TRUE 1
 #define FALSE 0
 
-    // size of the ganglion cell array (must be odd number)
-#define X 27
-#define Y 27
+#define SIZE_II  ((  6.5/60.0)/2.0)  // GOLDMANN sizes in degrees *radius*
+#define SIZE_II  (( 13.0/60.0)/2.0)
+#define SIZE_III (( 26.0/60.0)/2.0)
+#define SIZE_IV  (( 52.0/60.0)/2.0)
+#define SIZE_V   ((104.0/60.0)/2.0)
 
-#define RECEPTOR_X              251     // number of boundary points (not cells) (must be odd)
-#define RECEPTOR_Y              251     // number of boundary points (not cells) (must be odd)
+    // size of the ganglion cell array (must be odd number)
+#define X 21
+#define Y 21
+
+#define RECEPTOR_X              101     // number of boundary points (not cells) (must be odd)
+#define RECEPTOR_Y              101     // number of boundary points (not cells) (must be odd)
 #define RECEPTOR_FIELD_EXTENT   (6.0 * DOG_MCELL.sWidth)    // in degrees
 #define GCELL_SPACING           0.16    // MCELLs degrees
-#define STIMULUS_RADIUS         0.43    // Size III in degrees
+#define STIMULUS_RADIUS       SIZE_III  // in degrees
 
     // be careful not to end up with non integer END_TIME etc... 
 #define TIME_UNITS_PER_SECOND  5000.0

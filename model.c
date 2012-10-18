@@ -207,7 +207,7 @@ getDysfunction(FILE *f) {
        }
 
     double divisor = X * Y;
-    printf("%4.3f, %4.3f, %4.3f, %4.2f, ",hSum/divisor,sSum/divisor,
+    printf("Dysfunction: h= %4.3f s= %4.3f f= %4.3f d= %4.2f\n",hSum/divisor,sSum/divisor,
                                            fSum/divisor,dead/divisor);
 
     fprintf(stderr,"DONE\n");fflush(stderr);
@@ -684,6 +684,7 @@ int generateCdf(double intensity, int trials) {
 double generateFOSPoint(double intensity, int maxSpikesNoStim, double * cdfSpikesNoStim) {
     double areaUnderROC = 0;
     int overallMax;
+
     int maxSpikes = generateCdf(intensity, TRIALS_PER_INTENSITY);
     if(maxSpikesNoStim < maxSpikes) 
         overallMax = maxSpikesNoStim;
@@ -822,9 +823,11 @@ generateFOS() {
     double minAccept = 0.1 + 0.45 * FIT_2AFC;
     double maxAccept = 0.9 + 0.05 * FIT_2AFC;
     
+    time_t start = time(NULL);
+    fprintf(stderr,"Start clock\n");
     fprintf(stderr,"Establishing base firing with no stim...");
     int maxSpikesNoStim = generateCdf(0, TRIALS_NO_STIM);
-    fprintf(stderr,"DONE\n");
+    fprintf(stderr,"DONE: %ld seconds\n", time(NULL)-start);
 
     for(int i = 0 ; i <= maxSpikesNoStim ; i++)     // take copy of cdfSpikes
         cdfSpikesNoStim[i] = cdfSpikes[i];
@@ -837,7 +840,7 @@ generateFOS() {
         fosProbs[_s] = generateFOSPoint(CONTRAST(_s), maxSpikesNoStim, cdfSpikesNoStim); \
         if ((fosProbs[_s] > minAccept) && (fosProbs[_s] < maxAccept)) \
             stimsSoFar++; \
-        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f\n", fosStimuli[_s], fosProbs[_s]); \
+        fprintf(stderr,"Stimulus %4.1f, Prob of Seeing %5.4f %ld seconds\n", fosStimuli[_s], fosProbs[_s], time(NULL)- start); \
     } while (0);
 
         // dB values to test regardless of outcome
@@ -846,6 +849,16 @@ generateFOS() {
     for(int i = 0 ; i < NUM_INITIAL_CONTRASTS ; i++)
         DO_A_FOS_POINT(initialStim[i]);
 
+    if (fosProbs[initialStim[NUM_INITIAL_CONTRASTS-1]] > 0.5) {
+        fprintf(stdout, "Top dB value not prob <= 0.5\n");
+        fprintf(stderr, "Top dB value not prob <= 0.5\n");
+        return;
+    }
+    if (fosProbs[initialStim[0]] < 0.5) {
+        fprintf(stdout, "Lowest dB value not prob >= 0.5\n");
+        fprintf(stderr, "Lowest dB value not prob >= 0.5\n");
+        return;
+    }
     int hiStim = 0;
     int loStim = NUM_INITIAL_CONTRASTS-1;
     while(hiStim < NUM_INITIAL_CONTRASTS && fosProbs[initialStim[hiStim]] > 0.5) hiStim++;
