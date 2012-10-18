@@ -1,7 +1,7 @@
 #define TRUE 1
 #define FALSE 0
 
-#define SIZE_II  ((  6.5/60.0)/2.0)  // GOLDMANN sizes in degrees *radius*
+#define SIZE_I   ((  6.5/60.0)/2.0)  // GOLDMANN sizes in degrees *radius*
 #define SIZE_II  (( 13.0/60.0)/2.0)
 #define SIZE_III (( 26.0/60.0)/2.0)
 #define SIZE_IV  (( 52.0/60.0)/2.0)
