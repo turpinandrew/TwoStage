@@ -4,12 +4,6 @@ typedef struct dogParams {
     double cHeight, cWidth, sHeight, sWidth;
 } DogParams;
 
-const DogParams DOG_PCELL = {  77.8, 0.07, 0.6, 0.54 };
-const DogParams DOG_MCELL = { 115.0, 0.18, 2.0, 1.19 };
-
-//const DogParams DOG_CCELL = {  1.0, 0.25*0.83252/1.0, -0.25, 0.5*0.83252/1.0 };  // spatial freq 1.0
-const DogParams DOG_CCELL = {  2.0, 0.25*0.83252/0.5/sqrt(2), 0.5, 0.5*0.83252/0.5/sqrt(2) };  // spatial freq 0.5
-
 double dog(DogParams dp, double dist, double distanceScale);
 
 typedef struct poissonTable {

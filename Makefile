@@ -1,6 +1,8 @@
-CC = g++
-DEFS =    -DNDEBUG
-CFLAGS = -Wall -O6 $(DEFS)
+
+CC = mpixlc_r -qarch=qp -qtune=qp
+
+#CC = /bgsys/drivers/ppcfloor/comm/gcc/bin/mpicxx -fopenmp -DNDEBUG -Wall -O6
+
 LIBS =	-lm
 
 OBJSM = model.o dist.o gauss.o

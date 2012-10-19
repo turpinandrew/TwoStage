@@ -18,7 +18,7 @@
 #define STIMULUS_RADIUS       SIZE_III  // in degrees
 
     // be careful not to end up with non integer END_TIME etc... 
-#define TIME_UNITS_PER_SECOND  5000.0
+#define TIME_UNITS_PER_SECOND  500.0
 #define TRIGGER_IGNORE_TIME (1.0000 * TIME_UNITS_PER_SECOND) // TIME UNITS - ignore for spikes
 #define TRIGGER_END_TIME    (11.000 * TIME_UNITS_PER_SECOND) // TIME UNITS - training period
 #define END_TIME            (1.0000 * TIME_UNITS_PER_SECOND) // TIME UNITS - must be whole integer
