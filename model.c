@@ -35,7 +35,7 @@ const DogParams DOG_PCELL = {  77.8, 0.07, 0.6, 0.54 };
 const DogParams DOG_MCELL = { 115.0, 0.18, 2.0, 1.19 };
 
 //const DogParams DOG_CCELL = {  1.0, 0.25*0.83252/1.0, -0.25, 0.5*0.83252/1.0 };  // spatial freq 1.0
-const DogParams DOG_CCELL = {  2.0, 0.25*0.83252/0.5/sqrt(2), 0.5, 0.5*0.83252/0.5/sqrt(2) };  // spatial freq 0.5
+const DogParams DOG_CCELL = {  2.0, 0.25*0.83252/0.5/1.414, 0.5, 0.5*0.83252/0.5/1.414 };  // spatial freq 0.5
 
 
 double **receptorDistances;  // distance of each receptor from centre of GCell
@@ -929,6 +929,11 @@ generateFOS() {
         hiDb = (int)mid + 2;
     }
 */
+
+    if (loDb < 0)
+        loDb = 0;
+    if (hiDb > NO_CONTRASTS)
+        hiDb = NO_CONTRASTS;
 
     //fprintf(stderr,"lo=%d hi=%d\n", loDb, hiDb);
     for(int stim = loDb ; stim <= hiDb  ; stim++)

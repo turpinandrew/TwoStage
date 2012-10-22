@@ -1,5 +1,5 @@
 
-CC = mpixlc_r -qarch=qp -qtune=qp
+CC = mpixlc_r -qarch=qp -qtune=qp # -qsmp=omp:auto:opt
 
 #CC = /bgsys/drivers/ppcfloor/comm/gcc/bin/mpicxx -fopenmp -DNDEBUG -Wall -O6
 
