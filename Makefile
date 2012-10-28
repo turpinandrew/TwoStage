@@ -1,9 +1,15 @@
 
-CC = mpixlc_r -qarch=qp -qtune=qp # -qsmp=omp:auto:opt
+CC = mpixlc_r -qarch=qp -qtune=qp -qsmp=omp:auto:opt -q64 -g
+#CC = mpixlc_r -qarch=qp -qtune=qp -pg -qnostaticlink -g
 
 #CC = /bgsys/drivers/ppcfloor/comm/gcc/bin/mpicxx -fopenmp -DNDEBUG -Wall -O6
 
-LIBS =	-lm
+LIBS  = -lm
+LIBS += -L/bgsys/ibmhpc/ppedev.hpct/lib64/ -lxlsmp_pomp 
+LIBS += -L/bgsys/ibmhpc/ppedev.hpct/lib64/ -lpomprof_probe 
+#LIBS += -pg
+#LIBS += -L/bgsys/ibmhpc/ppedev.hpct/lib64 -lhpc_r 
+#LIBS += -L/bgsys/drivers/ppcfloor/bgpm/lib/ -lbgpm 
 
 OBJSM = model.o dist.o gauss.o
 OBJSD =  dysfunction.o gauss.o

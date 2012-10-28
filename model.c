@@ -32,7 +32,10 @@
 #include "gauss.h"
 
 const DogParams DOG_PCELL = {  77.8, 0.07, 0.6, 0.54 };
-const DogParams DOG_MCELL = { 115.0, 0.18, 2.0, 1.19 };
+//const DogParams DOG_MCELL = {500,0.0106066,10,0.0707107};
+const DogParams DOG_MCELL = { 0.7/0.9/0.9/0.02, 0.15*0.9/1.141, 0.7/0.9/0.9, 0.15*0.9/1.141 };
+
+
 
 //const DogParams DOG_CCELL = {  1.0, 0.25*0.83252/1.0, -0.25, 0.5*0.83252/1.0 };  // spatial freq 1.0
 const DogParams DOG_CCELL = {  2.0, 0.25*0.83252/0.5/1.414, 0.5, 0.5*0.83252/0.5/1.414 };  // spatial freq 0.5
@@ -324,12 +327,16 @@ initialiseCells(FILE *f) {
 **
 ** currentTime: time in seconds
 ** stimulusOn: boolean saying if stimulus is on or off
+** 
+** Returns number of RGCs that fired.
 */
 int 
 checkAllCells(double currentTime, char stimulusOn) {
-    int count = 0;
-     for(int x = 0 ; x < X ; x++) {
-        for(int y = 0 ; y < Y ; y++) {
+     int count = 0;
+     int x,y;
+     //#pragma omp parallel for private(x,y) reduction(+:count)
+     for(x = 0 ; x < X ; x++) {
+        for(y = 0 ; y < Y ; y++) {
             double ips = RGC_RESPONSE(0.0) * gCellArray[x][y].fireReduction;
             GCell *g = &gCellArray[x][y];
             if (currentTime - g->timeLastFired >= g->refractoryPeriod) {
@@ -342,7 +349,7 @@ checkAllCells(double currentTime, char stimulusOn) {
                     count++;
                     for(int i = 0 ; i < gCellArray[x][y].numberOfCCells ; i++) {
                         CCell *c = gCellArray[x][y].cCells[i];
-                                c->RGCOut += THALMIC_CELLS_PER_RGC * gCellArray[x][y].weights[i]; 
+                        c->RGCOut += THALMIC_CELLS_PER_RGC * gCellArray[x][y].weights[i]; 
                     }
                 }
             }
@@ -367,8 +374,10 @@ cortical(double currentTime) {
     if(stopTime + timePeriod > END_TIME) 
         stopTime = (int)END_TIME - timePeriod;
 
-     for(int x = 0 ; x < X ; x++) {
-          for(int y = 0 ; y < Y ; y++) {
+     int x,y;
+     //#pragma omp parallel for private(x,y,spikesIn) reduction(+:numSpikes)
+     for(x = 0 ; x < X ; x++) {
+          for(y = 0 ; y < Y ; y++) {
                 //spikesIn = cCellArray[x][y].RGCOut + (double)poissonRand(poissonTable);
                 double prand;
                 POISSON_RAND(poissonTable, prand);
@@ -430,9 +439,9 @@ setCorticalTriggerPoints() {
                     POISSON_RAND(poissonTable, prand);
                     spikesIn = cCellArray[x][y].RGCOut + prand;
                     cCellArray[x][y].RGCOut = 0.0;
-                              if(spikesIn > 0) for (int t = 0 ; t < stopTime ; t++)
-                                     EPSPs[x][y][time + t] += spikesIn * responseWave[t];
-//                     if((x==9)&&(y==9)) printf("SpikesIn=%5.3f; Search: EPSP=%5.3f\n",spikesIn,EPSPs[x][y][time]);
+                    if(spikesIn > 0) 
+                        for (int t = 0 ; t < stopTime ; t++)
+                            EPSPs[x][y][time + t] += spikesIn * responseWave[t];
                 }
      }
 
@@ -632,7 +641,7 @@ doStimulus(double intensity, double xOffset, double yOffset) {
             if (time == STIM_START + STIM_DURATION)
                 stimulusOn = FALSE;
 
-            checkAllCells((double)time/TIME_UNITS_PER_SECOND, stimulusOn);
+            (void)checkAllCells((double)time/TIME_UNITS_PER_SECOND, stimulusOn);
 
             numSpikes[time] = cortical((double)time/TIME_UNITS_PER_SECOND);
         }
@@ -1006,4 +1015,5 @@ main(int argc, char *argv[]) {
 
         generateFOS();
     }
+
 }//main

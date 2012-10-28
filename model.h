@@ -14,8 +14,8 @@
 #define RECEPTOR_X              101     // number of boundary points (not cells) (must be odd)
 #define RECEPTOR_Y              101     // number of boundary points (not cells) (must be odd)
 #define RECEPTOR_FIELD_EXTENT   (6.0 * DOG_MCELL.sWidth)    // in degrees
-#define GCELL_SPACING           0.16    // MCELLs degrees
-#define STIMULUS_RADIUS       SIZE_III  // in degrees
+#define GCELL_SPACING         (0.7 * 0.15 * 0.9)
+#define STIMULUS_RADIUS SIZE_III
 
     // be careful not to end up with non integer END_TIME etc... 
 #define TIME_UNITS_PER_SECOND  2000.0
@@ -62,7 +62,7 @@ typedef struct gcell {
 
 #define RGC_REFRACTORY_PERIOD 0.0015 // seconds
 #define RGC_BASE_FIRE_RATE   10.0    // "background noise" in fires per second 
-#define RGC_MAX_FIRE_RATE    65.0    // Maximum fires per second
+#define RGC_MAX_FIRE_RATE     80
 #define RGC_SEMI_SATURATION  100.0   // Bill Swanson's magic number
     // Bill's magic formula for non-linear response from GCell that asymptotes to RGC_MAX_FIRE_RATE
 #define RGC_RESPONSE(x)    (RGC_BASE_FIRE_RATE + ((RGC_MAX_FIRE_RATE-RGC_BASE_FIRE_RATE)*(x)/(RGC_SEMI_SATURATION + (x)))) 
