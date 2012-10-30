@@ -14,7 +14,7 @@
 #define RECEPTOR_X              101     // number of boundary points (not cells) (must be odd)
 #define RECEPTOR_Y              101     // number of boundary points (not cells) (must be odd)
 #define RECEPTOR_FIELD_EXTENT   (6.0 * DOG_MCELL.sWidth)    // in degrees
-#define GCELL_SPACING         (0.7 * 0.15 * 0.9)
+#define GCELL_SPACING         (0.5 * 0.15 * 0.7)
 #define STIMULUS_RADIUS SIZE_III
 
     // be careful not to end up with non integer END_TIME etc... 
@@ -30,7 +30,7 @@
 #define TRIALS_PER_INTENSITY	40
 #define TRIALS_NO_STIM		   200
 #define NO_FOS_POINTS	    	41
-#define FIT_2AFC				 0   // 1 for afc, 0 for not
+#define FIT_2AFC				 1   // 1 for afc, 0 for not
 
 typedef struct corticalCell {
     double timeLastFired;		// in number of seconds from start

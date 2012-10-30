@@ -1,13 +1,21 @@
 
-CC = mpixlc_r -qarch=qp -qtune=qp -qsmp=omp:auto:opt -q64 -g
+CC = mpixlc_r -qarch=qp -qtune=qp -qsmp=omp:auto:opt
+#CC = mpixlc_r -qarch=qp -qtune=qp -qsmp=omp:auto:opt -q64 -g
 #CC = mpixlc_r -qarch=qp -qtune=qp -pg -qnostaticlink -g
 
 #CC = /bgsys/drivers/ppcfloor/comm/gcc/bin/mpicxx -fopenmp -DNDEBUG -Wall -O6
 
 LIBS  = -lm
-LIBS += -L/bgsys/ibmhpc/ppedev.hpct/lib64/ -lxlsmp_pomp 
-LIBS += -L/bgsys/ibmhpc/ppedev.hpct/lib64/ -lpomprof_probe 
+
+#LIBS += -L /bgsys/linux/RHEL6.2_V1R1M2-12/opt/ibmmath/essl/5.1/lib64/libesslsmpbg.a -lesslsmpbg.a
+#-L /bgsys/linux/RHEL6.2_V1R1M2-12/opt/ibmmath/lib64/libesslsmpbg.a
+
+
+#LIBS += -L/bgsys/ibmhpc/ppedev.hpct/lib64/ -lxlsmp_pomp 
+#LIBS += -L/bgsys/ibmhpc/ppedev.hpct/lib64/ -lpomprof_probe 
+
 #LIBS += -pg
+
 #LIBS += -L/bgsys/ibmhpc/ppedev.hpct/lib64 -lhpc_r 
 #LIBS += -L/bgsys/drivers/ppcfloor/bgpm/lib/ -lbgpm 
 

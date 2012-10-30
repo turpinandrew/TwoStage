@@ -3,6 +3,8 @@
 #include <math.h>
 #include "dist.h"
 
+extern double myRandom(void);
+
 /*
 ** Return the dog value at dist * distanceScale
 */
@@ -89,7 +91,7 @@ for(int i = 0 ; i < 10 ; i++)
 */
 int
 poissonRand(PoissonTable *pTable) { 
-    int r = (int)round(rand() * (double)POISSON_TABLE_LENGTH / (double)RAND_MAX); 
+    int r = (int)round(myRandom() * (double)POISSON_TABLE_LENGTH / (double)RAND_MAX); 
     if (r == POISSON_TABLE_LENGTH) 
         r = POISSON_TABLE_LENGTH - 1; 
     if (r <= pTable->lastZeroIndex) return 0;

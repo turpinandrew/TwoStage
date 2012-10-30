@@ -24,6 +24,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <mpi.h>
+#include <unistd.h>
 #include <time.h>
 #include <math.h>
 #include <assert.h>
@@ -31,9 +33,18 @@
 #include "model.h"
 #include "gauss.h"
 
+struct drand48_data buffer;
+double myRandom() { 
+   double r;
+   drand48_r(&buffer, &r);
+   return r;
+}
+
+//int drand48_r(struct drand48_data *buffer, double *result);
+
 const DogParams DOG_PCELL = {  77.8, 0.07, 0.6, 0.54 };
 //const DogParams DOG_MCELL = {500,0.0106066,10,0.0707107};
-const DogParams DOG_MCELL = { 0.7/0.9/0.9/0.02, 0.15*0.9/1.141, 0.7/0.9/0.9, 0.15*0.9/1.141 };
+const DogParams DOG_MCELL = { 0.5/0.7/0.7/0.015, 0.15*0.7/1.141, 0.5/0.7/0.7, 0.7/1.141 };
 
 
 
@@ -276,8 +287,8 @@ initialiseCells(FILE *f) {
         else
             xCell = -floor((double)X/2.0) + 0.5;
         for(int x = 0 ; x < X ; x++) {
-            for(gX=-2, r=rand()/(double)RAND_MAX ; r > gsl_cdf_gaussian_P (gX, RGC_SPACING_JITTER_X_SD) ; gX += 0.005);
-            for(gY=-2, r=rand()/(double)RAND_MAX ; r > gsl_cdf_gaussian_P (gY, RGC_SPACING_JITTER_Y_SD) ; gY += 0.005);
+            for(gX=-2, r=myRandom() ; r > gsl_cdf_gaussian_P (gX, RGC_SPACING_JITTER_X_SD) ; gX += 0.005);
+            for(gY=-2, r=myRandom() ; r > gsl_cdf_gaussian_P (gY, RGC_SPACING_JITTER_Y_SD) ; gY += 0.005);
             gCellArray[x][y].x = xCell * GCELL_SPACING + gX;
             gCellArray[x][y].y = yCell * GCELL_SPACING + gY;
             xCell += 1.0;
@@ -332,18 +343,19 @@ initialiseCells(FILE *f) {
 */
 int 
 checkAllCells(double currentTime, char stimulusOn) {
-     int count = 0;
-     int x,y;
-     //#pragma omp parallel for private(x,y) reduction(+:count)
-     for(x = 0 ; x < X ; x++) {
+    int count = 0;
+    int x,y;
+    //#pragma omp parallel for private(x,y) reduction(+:count)
+    for(x = 0 ; x < X ; x++) {
         for(y = 0 ; y < Y ; y++) {
-            double ips = RGC_RESPONSE(0.0) * gCellArray[x][y].fireReduction;
             GCell *g = &gCellArray[x][y];
             if (currentTime - g->timeLastFired >= g->refractoryPeriod) {
+                double ips;
                 if (stimulusOn)
                     ips = spikesPerSecond[x][y] * UZZELL(currentTime - g->timeLastFired);
-                                                        // 13/11: sg added Uzzell for RGCs
-                double r=(double)rand()/(double)RAND_MAX;
+                else
+                    ips = RGC_RESPONSE(0.0) * gCellArray[x][y].fireReduction;
+                double r = myRandom();
                 if (r < ips/TIME_UNITS_PER_SECOND/(1 - ips * g->refractoryPeriod)) { // sg's magic formula! 
                     gCellArray[x][y].timeLastFired = currentTime;
                     count++;
@@ -374,31 +386,30 @@ cortical(double currentTime) {
     if(stopTime + timePeriod > END_TIME) 
         stopTime = (int)END_TIME - timePeriod;
 
-     int x,y;
-     //#pragma omp parallel for private(x,y,spikesIn) reduction(+:numSpikes)
-     for(x = 0 ; x < X ; x++) {
-          for(y = 0 ; y < Y ; y++) {
-                //spikesIn = cCellArray[x][y].RGCOut + (double)poissonRand(poissonTable);
-                double prand;
-                POISSON_RAND(poissonTable, prand);
-                spikesIn = cCellArray[x][y].RGCOut + prand;
-                cCellArray[x][y].RGCOut = 0.0;
-                if(spikesIn > 0) 
-                    for (int t = 0 ; t < stopTime ; t++)
-                        cCellArray[x][y].sumOfEPSP[timePeriod + t] += spikesIn * responseWave[t];
-                if (cCellArray[x][y].sumOfEPSP[timePeriod] * UZZELL(currentTime-cCellArray[x][y].timeLastFired) >= cCellArray[x][y].firingThreshold) {
-                    numSpikes++;
-                    cCellArray[x][y].fireCount++;
-                    cCellArray[x][y].timeLastFired = currentTime;
-                    cCellArray[x][y].spikesList[timePeriod] = 1;
-              } else 
-                    cCellArray[x][y].spikesList[timePeriod] = 0;
-//          if((x==9)&&(y==9)) printf("%4i, %5.2f, %3i\n",timePeriod,cCellArray[x][y].sumOfEPSP[timePeriod],cCellArray[x][y].spikesList[timePeriod]);
-             cCellArray[x][y].sumOfEPSP[timePeriod] = 0.0;
-          }
-     }
+    int x,y;
+    //#pragma omp parallel for private(x,y,spikesIn) reduction(+:numSpikes)
+    for(x = 0 ; x < X ; x++) {
+        for(y = 0 ; y < Y ; y++) {
+            //spikesIn = cCellArray[x][y].RGCOut + (double)poissonRand(poissonTable);
+            double prand;
+            POISSON_RAND(poissonTable, prand);
+            spikesIn = cCellArray[x][y].RGCOut + prand;
+            cCellArray[x][y].RGCOut = 0.0;
+            if(spikesIn > 0) 
+                for (int t = 0 ; t < stopTime ; t++)
+                    cCellArray[x][y].sumOfEPSP[timePeriod + t] += spikesIn * responseWave[t];
+            if (cCellArray[x][y].sumOfEPSP[timePeriod] * UZZELL(currentTime-cCellArray[x][y].timeLastFired) >= cCellArray[x][y].firingThreshold) {
+                numSpikes++;
+                cCellArray[x][y].fireCount++;
+                cCellArray[x][y].timeLastFired = currentTime;
+                cCellArray[x][y].spikesList[timePeriod] = 1;
+            } else 
+                cCellArray[x][y].spikesList[timePeriod] = 0;
+            cCellArray[x][y].sumOfEPSP[timePeriod] = 0.0;
+        }
+    }
 
-     return numSpikes;
+    return numSpikes;
 }//cortical()
 
 /*
@@ -598,7 +609,7 @@ decision(int numSpikes[]) {
 ** First check which cell's receptors are under the stimulus,
 ** and store the cell response
 **
-** Return seen or not seen.
+** Return the number of spikes used as the decision rule.
 */
 char
 doStimulus(double intensity, double xOffset, double yOffset) {
@@ -664,9 +675,9 @@ int generateCdf(double intensity, int trials) {
             fprintf(stderr, "%d ",i);
         double x, y, r;
             // jitter x and y for fixation movement
-        for(x = -2, r = rand()/(double)RAND_MAX ; r > gsl_cdf_gaussian_P (x, FIXATION_LOSS_X_SD) ; x += 0.005)
+        for(x = -2, r = myRandom() ; r > gsl_cdf_gaussian_P (x, FIXATION_LOSS_X_SD) ; x += 0.005)
             ;
-        for(y = -2, r = rand()/(double)RAND_MAX ; r > gsl_cdf_gaussian_P (y, FIXATION_LOSS_Y_SD) ; y += 0.005)
+        for(y = -2, r = myRandom() ; r > gsl_cdf_gaussian_P (y, FIXATION_LOSS_Y_SD) ; y += 0.005)
             ;
         spikes[i] = doStimulus(intensity, x, y);
         if(spikes[i] > maxSpikes) 
@@ -676,7 +687,7 @@ int generateCdf(double intensity, int trials) {
     for(int i = 0 ; i <= maxSpikes ; i++) 
         cdfSpikes[i] = 0.0;
     for(int i = 0 ; i < trials ; i++)
-        for(int j = 0 ; j < spikes[i] ; j++) 
+        for(int j = 0 ; j <= spikes[i] ; j++) // aht - changed < to <= 31/10/2012
             cdfSpikes[j]++;
     for(int i = 0 ; i <= maxSpikes ; i++) 
         cdfSpikes[i] /= trials;
@@ -806,26 +817,49 @@ void fitFOS(int noContrasts, int threshEstimate) {
 */
 void fitFOS(int noContrasts) {
     double min = 1000000000;
-    for(int thresholdTry = 0 ; thresholdTry < noContrasts ; thresholdTry++)
-        for(int slopeTry = 0 ; slopeTry < 11 ; slopeTry++) {
-            for(double fpTry = 0 ; fpTry <= 0.05 ; fpTry += 0.01) {
-                for(double fnTry = 0 ; fnTry <= 0.05 ; fnTry += 0.01) {
+
+    if (FIT_2AFC) {
+        fp = 0.5;
+        for(int thresholdTry = 0 ; thresholdTry < noContrasts ; thresholdTry++)
+            for(int slopeTry = 0 ; slopeTry < 11 ; slopeTry++) {
+                for(double fnTry = 1 ; fnTry >= 0.90 ; fnTry -= 0.01) {
                     double ls = 0.0;
                     for(int t = 0 ; t < noContrasts ; t++)
                         if (fosStimuli[t] != FOS_POINT_NOT_DONE) {
-                            double diff = fosProbs[t] - (fpTry + (1 - fpTry - fnTry)*(1-gsl_cdf_gaussian_P(t - thresholdTry, slopeTry)));
+                            double diff = fosProbs[t] - (0.5 + (fnTry-0.5)* (1-gsl_cdf_gaussian_P(t - thresholdTry, slopeTry)));
                             ls += diff*diff;
                         }
                     if (ls < min) {
                         threshold = thresholdTry;
                         slope     = slopeTry;
-                        fp        = fpTry;
                         fn        = fnTry;
                         min = ls;
                     }
+                    
                 }
             }
-        }
+    } else {
+        for(int thresholdTry = 0 ; thresholdTry < noContrasts ; thresholdTry++)
+            for(int slopeTry = 0 ; slopeTry < 11 ; slopeTry++) {
+                for(double fpTry = 0 ; fpTry <= 0.05 ; fpTry += 0.01) {
+                    for(double fnTry = 0 ; fnTry <= 0.05 ; fnTry += 0.01) {
+                        double ls = 0.0;
+                        for(int t = 0 ; t < noContrasts ; t++)
+                            if (fosStimuli[t] != FOS_POINT_NOT_DONE) {
+                                double diff = fosProbs[t] - (fpTry + (1 - fpTry - fnTry)*(1-gsl_cdf_gaussian_P(t - thresholdTry, slopeTry)));
+                                ls += diff*diff;
+                            }
+                        if (ls < min) {
+                            threshold = thresholdTry;
+                            slope     = slopeTry;
+                            fp        = fpTry;
+                            fn        = fnTry;
+                            min = ls;
+                        }
+                    }
+                }
+            }
+    }
 }//fitFOS
 
 /*
@@ -865,20 +899,20 @@ generateFOS() {
     for(int i = 0 ; i < NUM_INITIAL_CONTRASTS ; i++)
         DO_A_FOS_POINT(initialStim[i]);
 
-    if (fosProbs[initialStim[NUM_INITIAL_CONTRASTS-1]] > 0.5) {
-        fprintf(stdout, "Top dB value not prob <= 0.5\n");
-        fprintf(stderr, "Top dB value not prob <= 0.5\n");
+    if (fosProbs[initialStim[NUM_INITIAL_CONTRASTS-1]] > 0.5 + FIT_2AFC * 0.25) {
+        fprintf(stdout, "Top dB value not prob <= %f\n", 0.5 + FIT_2AFC * 0.25);
+        fprintf(stderr, "Top dB value not prob <= %f\n", 0.5 + FIT_2AFC * 0.25);
         return;
     }
-    if (fosProbs[initialStim[0]] < 0.5) {
-        fprintf(stdout, "Lowest dB value not prob >= 0.5\n");
-        fprintf(stderr, "Lowest dB value not prob >= 0.5\n");
+    if (fosProbs[initialStim[0]] < 0.5 + FIT_2AFC * 0.25) {
+        fprintf(stdout, "Lowest dB value not prob >= %f \n", 0.5 + FIT_2AFC * 0.25);
+        fprintf(stderr, "Lowest dB value not prob >= %f \n", 0.5 + FIT_2AFC * 0.25);
         return;
     }
     int hiStim = 0;
     int loStim = NUM_INITIAL_CONTRASTS-1;
-    while(hiStim < NUM_INITIAL_CONTRASTS && fosProbs[initialStim[hiStim]] > 0.5) hiStim++;
-    while(loStim >= 0                    && fosProbs[initialStim[loStim]] < 0.5) loStim--;
+    while(hiStim < NUM_INITIAL_CONTRASTS && fosProbs[initialStim[hiStim]] > 0.5+FIT_2AFC*0.25) hiStim++;
+    while(loStim >= 0                    && fosProbs[initialStim[loStim]] < 0.5+FIT_2AFC*0.25) loStim--;
     if (hiStim == NUM_INITIAL_CONTRASTS) 
         loStim = hiStim = NUM_INITIAL_CONTRASTS - 1;
     if (loStim == -1) 
@@ -887,9 +921,9 @@ generateFOS() {
 
     int loDb=-1, hiDb=-1;
     if (hiStim == loStim) {
-        if (fosProbs[initialStim[hiStim]] > 0.55)
+        if (fosProbs[initialStim[hiStim]] > 0.55+FIT_2AFC*0.25)
             loStim++; 
-        else if (fosProbs[initialStim[hiStim]] < 0.45) 
+        else if (fosProbs[initialStim[hiStim]] < 0.45+FIT_2AFC*0.25) 
             hiStim--;
         else {
             loDb = initialStim[hiStim] - 2;
@@ -967,6 +1001,19 @@ fosProbs[12] = 0.4;
 */
 int
 main(int argc, char *argv[]) {
+    char procname[128];
+    int namelen;
+    MPI_Init(&argc, &argv);
+    MPI_Get_processor_name(procname, &namelen);
+    int seed = 0;
+    for(char *p = procname ; *p != 0 ; p++)
+      seed += *p * (p-procname+1);
+    seed += getpid();
+    seed += time(NULL);
+    (void)srand48_r(seed, &buffer);
+
+    printf("Random Seed: %15d %20s %2d = %d\n",time(NULL), procname, getpid(), seed);
+
     if (argc != 2) {
         fprintf(stderr,"Usage: %s filename\n",argv[0]);
         return -1;
@@ -976,8 +1023,6 @@ main(int argc, char *argv[]) {
         fprintf(stderr,"Out of memory for something!\n");
         return -1;
     }
-
-    srand(time(NULL));
 
     poissonTable = poissonInitialise(CORTICAL_NOISE / TIME_UNITS_PER_SECOND);
     createResponseLookup();
@@ -1016,4 +1061,5 @@ main(int argc, char *argv[]) {
         generateFOS();
     }
 
+    MPI_Finalize();
 }//main
